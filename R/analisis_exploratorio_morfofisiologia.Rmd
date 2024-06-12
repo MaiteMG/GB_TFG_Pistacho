@@ -1,0 +1,188 @@
+---
+title: "analisis_exploratorio_morfofisiologia.Rmd"
+author: "Maite Moreno Gómez"
+date: "2024-06-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r , echo=F , results=F, message=FALSE}
+if (!require(ggplot2)) install.packages('ggplot2')
+if (!require(ggjoy)) install.packages('ggjoy')
+if (!require(ggridges)) install.packages('ggridges')
+if (!require(ggpubr)) install.packages('ggpubr')
+if (!require(magrittr)) install.packages('magrittr')
+if (!require(gridExtra)) install.packages('gridExtra')
+if (!require(grid)) install.packages('grid')
+if (!require(readxl)) install.packages('readxl')
+if (!require(RColorBrewer)) install.packages('RColorBrewer')
+if (!require(dplyr)) install.packages('dplyr')
+if (!require(car)) install.packages('car')
+if (!require(agricolae)) install.packages('agricolae')
+if(!require(nlme)){install.packages("nlme")}
+if(!require(multcomp)){install.packages("multcomp")}
+if(!require(multcompView)){install.packages("multcompView")}
+if(!require(lsmeans)){install.packages("lsmeans")}
+if(!require(lme4)){install.packages("lme4")}
+if(!require(lmerTest)){install.packages("lmerTest")}
+if(!require(TukeyC)){install.packages("TukeyC")}
+
+set.seed(42)
+```
+
+```{r datos1, echo=FALSE}
+#Importar los datos a partir de la tabla con las variables seleccionadas tras el análisis de imágen
+#i <- 12 # variable para pruebas sin el loop. Comentar antes de usar el loop.
+
+datos <- read_xlsx("../Datos/NOMBREARCHIVO.xlsx",
+                    sheet = "datos")
+#variables <- c(-7) # crear un vector con las columnas (variables) que no se quieren analizar indicando el número de columna de la tabla original en valor negativo.
+
+# genotipo <-"Kerman" # Kastel, Larnaka, Avdat, Kerman
+
+# datos <- datos[datos$Variedad == genotipo,]
+
+#datos <- datos[,variables]
+
+# i <- 4 # comentar esta línea para probar este script de forma independiente. Comentar la línea cuando se invoca desde otro script para analizar múltiples variables. 
+
+df <- datos # cambiar los valores numéricos por las variables independientes que se quieren usar
+
+variable <- names(df[2]) # así se guarda el nombre original de la variable importada
+
+VI1 <- names(df[1])
+VD  <- names(df[2])
+
+names(df) <- c("VI1", "VD")
+df[[1]] <- as.factor(df[[1]])
+
+```
+## Información sobre los datos
+
+En este informe se realiza un análisis exploratorio, visual, y estadístico para la variable *`r VD`* en función de la variabls independiente *`r VI1`*.  
+
+Recuerda, en este análisis:
+
+* VI1 = *`r VI1`*
+
+* VD = *`r VD`*
+
+# Análisis exploratorio
+
+Tabla 1: Estadísticos descriptivos de los datos por grupos
+```{r, echo=FALSE}
+group_by(df, VI1) %>%
+  summarise(
+    count = n(),
+    mean = round(mean(VD, na.rm = TRUE),2),
+    sd = round(sd(VD, na.rm = TRUE),2),
+    median = median(VD, na.rm = TRUE),
+    CVE = round((sd(VD, na.rm = TRUE)/mean(VD, na.rm = TRUE))*100, 2)
+  )
+```
+CVE: coeficiente de variación ((Desviación típica / media) x 100)
+
+
+### Distribución de datos para la primera variable independiente (`r VI1`)
+```{r, echo=FALSE}
+ggplot(df, aes(x=VI1, y=VD, fill=VI1)) +
+  geom_violin(alpha=0.6) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_bw() + theme(legend.position="none")
+```
+
+### Comparativa entre grupos de la variable dependiente (`r VD`) con boxplot y scatterplot
+
+```{r, echo=FALSE}
+ggplot(df, aes(x = VI1, y = VD)) +
+       geom_point(alpha = 0.3, position = "jitter") +
+       geom_boxplot(alpha = 0) +
+  scale_color_brewer(palette = "Set1")
+```
+
+
+\newpage
+
+## Análisis estadístico convencional
+
+Para aplicar el test estadístico más adecuado debemos comprobar algunas características de la distribución de datos, como la normalidad (que la distribución de datos se acerque a una distribución normal) o la varianza entre grupos sea igual. Que se cumplan estas condiciones son requisitos previos para poder usar el resultado de una análisis de varianza paramétrico (como ANOVA). La homogeneidad de la varianza se estimará directamente sobre los datos y la normalidad se comprobará sobre los residuos del modelo de ajuste ANOVA.
+
+### Comprobar homogeneidad de la varianza
+
+Tabla 2: Resultados de la prueba de homogeneidad de la varianza entre grupos mediante tres test para homogeneidad de la varianza. Bartlett's test (sensible a datos no normales, pero más potente cuando se tiene la seguridad de que los datos siguen una normal), Levene's test (más robusto antes desviaciones de los datos de la normalidad y permite elegir el tipo de test [media, mediana, etc]) y Fligner's test (para datos no paramétricos). Si el valor de p es mayor de 0.05 se asume que no hay diferencias entre las varianzas y podríamos asumir homogeneidad para los diferentes tratamientos.
+
+```{r, echo=FALSE}
+bartlett.test(VD ~ VI1, data=df)
+```
+
+Si nuestros datos cumplen el requisito de ajustarse a una función normal (ver más adelante en análisis con los residuos del ANOVA) nos quedamos con el resultado del test de Bartlett. Si nuestros datos no se alejasen de una normal, o fuesen del tipo no paramétrico, entonces miraríamos los test siguientes.
+
+```{r, echo=FALSE}
+leveneTest(VD ~ VI1, data = df)
+```
+
+```{r, echo=FALSE}
+fligner.test(VD ~ VI1, data=df)
+```
+
+### Análisis de la varianza (ANOVA) de un factor
+
+Cuando en un experimento tenemos más de una variable independiente se necesita usar un análisis de la varianza ANOVA de dos factores (si los datos cumplen con los requisitos). En este caso aplicaremos un ANOVA de dos factores asumiendo que hay interacción entre ellos.
+
+Tabla 3: Resultados del ANOVA para un nivel de significación de 0.05. Si valor de Pr(>F) es menor de 0.05, se asume que hay un efecto significativo de los tratamientos sobre la variable dependiente (aunque aun no sabemos qué grupo es mayor o menor que otro). También se incluye si la interacción es realmente significativa o no. El nivel de significación vendrá determinado por el número de asteriscos tal como indica la línea "Signif. codes".
+
+```{r, echo= FALSE}
+res.aov2 <- aov(VD ~ VI1, data = df)
+summary(res.aov2)
+```
+
+
+### Prueba de normalidad sobre los residuos del ANOVA
+Antes de dar por bueno el resultado del ANOVA debemos comprobar que se cumple el criterio de normalidad. Una forma de hacerlo es evaluar si los residuos del modelo ANOVA se ajustan a una normal. Esto podemos hacerlo mediante un test estadísico, Shapiro-Wilk Normaliy Test, o una representación tipo Q-Q plot (Figura 1). 
+
+Tabla 4: Resultados del Shapiro-Wilk Normality Test para los datos analizados. Si el valor de p es mayor de 0.05 se asume que no hay diferencias entre la distribución de nuestros datos y una distribución normal. Se cumpliría, en este caso, el requisito de normalidad.
+
+```{r, echo=FALSE}
+shapiro.test(x = residuals(res.aov2))
+```
+
+```{r, echo=FALSE, fig.cap="Figura 1: Q-Q plot de los datos. En una distribución normal los residuos se agregarían alrededor de la línea. Los datos se se desvían de la normalidad aparecen indicados con el número de fila en la tabla original y, si son pocos, podrían considerarse datos raros u outliers"}
+plot(res.aov2, 2)
+```
+
+### Grupos homogéneos con Tukey HSD
+Si los datos cumplen con los requisitos para el ANOVA y el resultado de este es significativo, podemos determinar qué grupos son diferentes mediante los grupos homogéneos establecidos con un test como el Tukey HSD test.
+
+Tabla 5: Resultados del Tukey HSD test para determinar grupos homogéneos mediante la comparación de las medias de cada grupo. Grupos que comparten una letra se consideran que no son diferentes respecto a su media de la distribución.
+
+```{r, echo=FALSE}
+res.aov3 <- aov(VD ~ VI1, data=df)
+
+HSD.test(res.aov3, "VI1", group = TRUE, console = TRUE)
+```
+
+
+\newpage
+
+## Análisis estadístico no paramétrico, equivalente a ANOVA, mediante test de Kruskal-Wallis
+
+En caso de que no se cumplan los requisitos previos para aplicar un análisis de ANOVA utilizaremos una alternativa para datos no paramétricos como es el Kruskal-Wallis Rank Sum Test.
+
+
+Tabla 6: Resultados del Kruskal-Wallis Rank Sum Test. Si el valor de p es menor de 0.05, se asume que hay un efecto significativo de los tratamientos sobre la variable dependiente (aunque aun no sabemos qué grupo es mayor o menor que otros).
+```{r, echo=FALSE}
+kruskal.test(VD ~VI1, data = df)
+```
+
+## Comparación múltiple entre grupos
+En una comparación de medias para datos no paramétricos, tras comprobar que hay efecto significativo del tratamiento mediante el Kruskal-Wallis Rank Sum Test, aplicaremos un test de comparación por pares entre niveles de grupo con correcciones para pruebas múltiples
+
+Tabla 7: Resultados del Pairwise Wilconxon Rank Sum Test para determinar grupos homogéneos mediante la comparación de las medias de cada grupo. En la tabla de contingencia aparece el valor de p para cada par de grupos comparado. Si el valor de p es menor de 0.05, se asume que hay una diferencia significativa entre la media de ese par de grupos
+```{r, echo=FALSE, warning=FALSE}
+pairwise.wilcox.test(df$VD, df$VI1,
+                 p.adjust.method = "BH")
+```
+

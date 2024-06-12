@@ -1,0 +1,58 @@
+---
+title: "ANOVA anidado"
+author: "Maite Moreno Gómez"
+date: "2024-06-11"
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+```
+
+```{r metadatos, include=FALSE}
+# Define los siguientes parámetros para este modelo cambiando, si es necesaria, la información entre dobles comillas.
+
+autor <- "Maite Moreno Gómez" # Nombre de quién prepara el análisis
+proyecto <- "Pistacho" # Indicar de que se trata (hojas, fruto, especie, etc)
+test <- "Kerman" # Nombre de la variedad, genotipo, muestra, referencia del test...
+
+fecha <- Sys.Date()
+```
+
+Informe resumen del análisis de la varianza realizado por  `r autor` el día `r format(fecha, format="%d %B %Y")` usando una tabla de datos de una muestra de `r proyecto` con referencia `r test`.
+
+```{r , echo=F , results=F, message=FALSE}
+if(!require(nlme)){install.packages("nlme")}
+if(!require(multcomp)){install.packages("multcomp")}
+if(!require(multcompView)){install.packages("multcompView")}
+if(!require(lsmeans)){install.packages("lsmeans")}
+if(!require(lme4)){install.packages("lme4")}
+if(!require(lmerTest)){install.packages("lmerTest")}
+if(!require(TukeyC)){install.packages("TukeyC")}
+if (!require(readxl)) install.packages('readxl')
+library("readxl")
+set.seed(42) 
+```
+
+```{r datos}
+#Importar los datos a partir de la tabla con las variables seleccionadas tras el análisis de imágen
+#i <- 12 # variable para pruebas sin el loop. Comentar antes de usar el loop.
+
+datos <- read_excel("../Datos/NOMBREARCHIVO.xlsx",
+                    sheet = "datos")
+variables <- c(-3, -4) # crear un vector con las columnas (variables) que no se quieren analizar indicando el número de columna de la tabla original en valor negativo.
+datos <- datos[,variables]
+
+# i <- 3
+df <- datos[,c(1, 2, i)]
+variable <- names(df[3])
+names(df) <- c("VI", "VG", "VD")
+df[[1]] <- as.factor(df[[1]])
+df[[2]] <- as.factor(df[[2]])
+```
+
+# Modelo ANOVA para la variable dependiente `r variable` con aov
+
+```{r, echo= FALSE}
+res.aov.nest <- aov(VD ~ VI/VG, data = df)
+summary(res.aov.nest)
+```
